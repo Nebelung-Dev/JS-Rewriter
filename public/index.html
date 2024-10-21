@@ -1,0 +1,101 @@
+<script src="https://cdn.jsdelivr.net/npm/meriyah@6.0.2/dist/meriyah.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/astring@1.9.0/dist/astring.min.js"></script>
+<script>
+  const __$scope = () => {
+    return "intercepted";
+  };
+
+  const fakeClientShit = `
+  eval = new Proxy(eval, {
+    apply(target, thisArg, argArray) {
+      if (argArray[0]) {
+        argArray[0] = rewrite(argArray[0]);
+      }
+
+      return Reflect.apply(target, thisArg, argArray);
+    },
+  });
+
+  Function = new Proxy(Function, {
+    construct(target, argArray) {
+      if (argArray[argArray.length - 1]) {
+        argArray[argArray.length - 1] = rewrite(argArray[argArray.length - 1]);
+      }
+
+      return Reflect.construct(target, argArray);
+    },
+  });`;
+
+  const globals = [
+    "window",
+    "self",
+    "globalThis",
+    "parent",
+    "top",
+    "document",
+    "frames",
+    "location",
+  ];
+
+  function rewrite(code) {
+    const internalVars = [];
+
+    try {
+      const ast = meriyah.parseModule(code, {
+        module: true,
+        webcompat: true,
+        globalReturn: true,
+        specDeviation: true,
+      });
+
+      function traverse(node, parent = null) {
+        if (!node) return;
+
+        if (node.type == "VariableDeclaration") {
+          internalVars.push(node.declarations[0].id.name);
+        }
+
+        for (let key in node) {
+          if (node[key] && typeof node[key] == "object") {
+            traverse(node[key], node);
+          }
+        }
+      }
+
+      traverse(ast);
+
+      code = astring.generate(ast);
+    } catch {}
+
+    return `(function(${globals.join(
+      ", "
+    )}, __$internalGlobalThis) {${fakeClientShit}${code}${internalVars
+      .map((v) => "__$internalGlobalThis['" + v + "'] = " + v)
+      .join(";")};}).bind(__$scope(this))(${globals
+      .map((global) => "__$scope(" + global + ")")
+      .join(", ")}, globalThis);`;
+  }
+
+  eval(rewrite(`
+  console.log(window)
+
+  var w = window;
+  console.log(w)
+
+  const wi = window;
+  console.log(wi);
+
+  const arrayofstuff = ["a", window, "c"]
+  console.log(arrayofstuff[1])
+
+  let objectlol = {
+    window: window
+  }
+  console.log(objectlol.window)
+
+  let somevar;
+  somevar = window;
+
+  console.log(somevar)
+  `));
+</script>
